@@ -52,35 +52,32 @@ updateNBHAux(E, [{E, Cost, PF}|NBH], Acc) ->
 updateNBHAux(E, [{NBR, Cost, PF}|NBH], Acc) ->
     updateNBHAux(E, NBH, [{NBR, Cost, PF}|Acc]).
 
-%% @spec ant(Graph::PID, Node::Int, Visited::List) -> ()
+ask(Master, Ant, Node, Cost) ->
+    spawn(
+        fun() -> 
+            timer:sleep(Cost * 500),
+            Master ! {neighbours,Ant,Node}
+        end
+    ).
+
+%% @spec ant(Master::PID, Node::Int, Visited::List) -> ()
 %%       List = [Int]
 %%       Int = int()
 %%       PID = pid()
-ant(Graph,Node,Visited) ->
+ant(Master,Node,Visited) ->
     receive
         {init} ->
-            Graph ! {neighbours,self(),Node},
-            ant(Graph,Node,Visited);
+            ask(Master, self(), Node, 0),
+            ant(Master, Node, Visited);
         {goto,L} when is_list(L) ->
             {NewNode,Cost} = chooseOneOf(posibleEdges(L)),
             io:format("From ~p to ~p~n",[Node,NewNode]), 
-            timer:sleep(Cost * 1000),
-            Graph ! {updatePF,Node,NewNode},
-            PID = self(),
-            spawn(
-                fun() -> 
-                    timer:sleep(Cost * 1000),
-                    Graph ! {neighbours,PID,NewNode}
-                end
-            ),
-            ant(Graph,NewNode,Visited);
-        {goto,N} when is_integer(N) ->
-            timer:sleep(2000),
-            io:format("------> From ~p to ~p~n",[Node,N]), 
-            Graph ! {neighbours,self(),Node}, 
-            ant(Graph,N,Visited);
+            timer:sleep(Cost * 500),
+            Master ! {updatePF,Node,NewNode},
+            ask(Master, self(), NewNode, Cost),
+            ant(Master,NewNode,Visited);
         _ ->
-            ant(Graph,Node,Visited)
+            ant(Master,Node,Visited)
     end.
 
 master(AdjacencyList) ->
