@@ -16,15 +16,15 @@ exp() -> [
 
 awakening() ->
     Master = spawn(ant, master, [exp()]),
-    Ants = wakeUp(Master, 100, []),
+    Ants = wakeUp(Master, 100, 5, []),
     {Master, Ants}.
 
-wakeUp(_, 0, Ants) when is_list(Ants) -> Ants;
-wakeUp(G, N, Ants) when is_integer(N), is_list(Ants), N > 0 ->
-    A = spawn(ant, ant, [G,1,[]]),
+wakeUp(_, 0, _, Ants) when is_list(Ants) -> Ants;
+wakeUp(G, N, Nodes, Ants) when is_integer(N), is_list(Ants), N > 0 ->
+    A = spawn(ant, ant, [G,1,[],Nodes]),
     A ! {init},
-    wakeUp(G, N-1, [A|Ants]);
-wakeUp(_ , _, _) -> throw("Cannot awake a negative number of ants").
+    wakeUp(G, N-1, Nodes, [A|Ants]);
+wakeUp(_ , _, _, _) -> throw("Cannot awake a negative number of ants").
 
 exterminate(Ants) ->
     lists:map(fun(A) -> exit(A,kill) end, Ants).
@@ -33,10 +33,23 @@ edgesReplication([], ACC) -> lists:concat(ACC);
 edgesReplication([{NBR, Cost, PF}|NBH], ACC) ->
     edgesReplication(NBH, [lists:duplicate(PF, {NBR, Cost})|ACC]).
 
+edgesReplication([], _, ACC) -> lists:concat(ACC);
+edgesReplication([{NBR, Cost, PF}|NBH], Visited ,ACC) ->
+    case lists:member(NBR,Visited) of
+        true ->
+            edgesReplication(NBH, Visited, ACC);
+        _ ->
+            edgesReplication(NBH, Visited,
+                [lists:duplicate(PF, {NBR, Cost})|ACC])
+    end.
+
 posibleEdges(Edges) -> edgesReplication(Edges, []).
 
-chooseOneOf(X) ->
-    lists:nth(rand:uniform(length(X)), X).
+posibleEdges(Edges, Visited) -> edgesReplication(Edges, Visited, []).
+
+chooseOneOf([]) -> nil;
+chooseOneOf(Xs) ->
+    lists:nth(rand:uniform(length(Xs)), Xs).
 
 setNth(I, List, F) -> setNthAux(I, List, F, []).
 
@@ -64,20 +77,33 @@ ask(Master, Ant, Node, Cost) ->
 %%       List = [Int]
 %%       Int = int()
 %%       PID = pid()
-ant(Master, Node, Visited) ->
+ant(Master, Node, Visited, Ns) ->
     receive
         {init} ->
             ask(Master, self(), Node, 0),
-            ant(Master, Node, Visited);
+            ant(Master, Node, Visited, Ns);
         {goto, L} when is_list(L) ->
-            {NewNode,Cost} = chooseOneOf(posibleEdges(L)),
+            CurrentVisited = [Node|Visited],
+            Edges = posibleEdges(L,CurrentVisited),
+            if
+                Edges == [] ->
+                    self() ! {init},
+                    if
+                        length(CurrentVisited) == Ns ->
+                            ant(Master, Node, [], Ns);
+                        true ->
+                            ant(Master, lists:last(Visited), [], Ns)
+                    end;
+                true -> ok
+            end,
+            {NewNode,Cost} = chooseOneOf(Edges),
             % io:format("From ~p to ~p~n", [Node,NewNode]),
             timer:sleep(Cost * 500),
             Master ! {increasePF, Node, NewNode},
             ask(Master, self(), NewNode, Cost),
-            ant(Master, NewNode, Visited);
+            ant(Master, NewNode, CurrentVisited, Ns);
         _ ->
-            ant(Master, Node, Visited)
+            ant(Master, Node, Visited, Ns)
     end.
 
 updatePheromone(From, To, Graph, Fun) ->
@@ -109,10 +135,9 @@ weakenPheromone(From, To, AL) ->
 evaporatePheromone(Master, From, To) ->
     spawn(
         fun() ->
-            timer:sleep(10000),
+            timer:sleep(1000),
             Master ! {decreasePF,From,To}
-        end
-    ).
+        end).
 
 master(AdjacencyList) ->
     receive
@@ -126,7 +151,7 @@ master(AdjacencyList) ->
         {decreasePF, From, To} ->
             NewAL = weakenPheromone(From, To, AdjacencyList),
             master(NewAL);
-        {getGraph} ->
+        {get} ->
             io:format("Graph: ~p", [AdjacencyList]),
             master(AdjacencyList);
         _ ->
