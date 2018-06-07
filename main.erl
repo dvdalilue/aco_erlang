@@ -4,10 +4,6 @@
 
 -export ([init/1]).
 
-% -import (ant,[ant/4]).
-% -import (node, [node/2]).
-% -import (master,[master/1]).
-
 -include_lib("eqc/include/eqc.hrl").
 
 % ----------------------------------------------------------- %
