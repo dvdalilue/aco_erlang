@@ -1,6 +1,6 @@
 -module (ant).
 
--export ([ant/3]).
+-export ([ant/4]).
 
 -import (node, [walk/4]).
 
@@ -10,7 +10,7 @@
 % use the first version (arity 2) of 'edgesReplication' and so on.
 
 % posibleEdges/1
-posibleEdges(Edges) -> edgesReplication(Edges, []).
+% posibleEdges(Edges) -> edgesReplication(Edges, []).
 
 % posibleEdges/2
 posibleEdges(Edges, Visited) -> edgesReplication(Edges, Visited, []).
@@ -22,9 +22,9 @@ posibleEdges(Edges, Visited) -> edgesReplication(Edges, Visited, []).
 % neighbour (NBR) belongs to the list of visited.
 
 % edgesReplication/2
-edgesReplication([], ACC) -> lists:concat(ACC);
-edgesReplication([{NBR, Weight, PF}|NBH], ACC) ->
-    edgesReplication(NBH, [lists:duplicate(PF, {NBR, Weight})|ACC]).
+% edgesReplication([], ACC) -> lists:concat(ACC);
+% edgesReplication([{NBR, Weight, PF}|NBH], ACC) ->
+%     edgesReplication(NBH, [lists:duplicate(PF, {NBR, Weight})|ACC]).
 
 % edgesReplication/3
 edgesReplication([], _, ACC) -> lists:concat(ACC);
@@ -43,37 +43,40 @@ chooseOneOf([]) -> nil;
 chooseOneOf(Xs) ->
     lists:nth(rand:uniform(length(Xs)), Xs).
 
-%% @spec ant(Node::pid(), Visited::[pid()], Ns::int()) -> ()
-ant(Node, Visited, Ns) ->
+%% @spec ant(Node::pid(), Visited::[pid()], Ns::int(), Target::pid()) -> ()
+ant(Node, Visited, Ns, Target) ->
     receive
         {init} ->
             Node ! {ask, self()},
-            ant(Node, Visited, Ns);
+            ant(Node, Visited, Ns, Target);
         {print} ->
             io:format("~p : ~p~n", [self(), Node]),
-            ant(Node, Visited, Ns);
+            ant(Node, Visited, Ns, Target);
         {goto, NBH} when is_list(NBH) ->
-            % CurrentVisited = [Node|Visited],
-            % Edges = posibleEdges(NBH,CurrentVisited),
-            Edges = posibleEdges(NBH),
-            % if
-            %     Edges == [] ->
-            %         self() ! {init},
-            %         if
-            %             length(CurrentVisited) == Ns ->
-            %                 ant(Node, [], Ns);
-            %             true ->
-            %                 ant(lists:last(Visited), [], Ns)
-            %         end;
-            %     true -> ok
-            % end,
-            {NewNode, Weight} = chooseOneOf(Edges),
-            % io:format("From ~p to ~p~n", [Node,NewNode]),
-            walk(self(), Node, NewNode, Weight),
-            ant(NewNode, Visited, Ns);
-            % ant(NewNode, CurrentVisited, Ns);
+            CurrentVisited = [Node|Visited],
+            Banned = [Target|CurrentVisited],
+            Edges = posibleEdges(NBH, Banned),
+            if
+                Edges == [] ->
+                    self() ! {init},
+                    if
+                        length(Banned) == Ns ->
+                            % Go back with food
+                            ant(Target, [], Ns, lists:last(Visited));
+                        true ->
+                            [Previous|_] = Visited,
+                            Previous ! {evaporate, Node},
+                            Node ! {evaporate, Previous},
+                            % Respawn back to source (ant died)
+                            ant(lists:last(Visited), [], Ns, Target)
+                    end;
+                true ->
+                    {NewNode, Weight} = chooseOneOf(Edges),
+                    walk(self(), Node, NewNode, Weight),
+                    ant(NewNode, CurrentVisited, Ns, Target)
+            end;
         {die} ->
             exit(kill);
         _ ->
-            ant(Node, Visited, Ns)
+            ant(Node, Visited, Ns, Target)
     end.
