@@ -1,44 +1,80 @@
 -module (node).
 
--compile([export_all]).
+-export ([node/2, walk/4]).
 
-newGraph(N, Edges) ->
-    G = createGraph(N, []),
-    addEdges(G, Edges),
-    G.
+-define (DELAY_FACTOR, 500).
 
-addEdges(_, []) -> ok;
-addEdges(Graph, [{X,Y}|Es]) ->
-    Node_x = lists:nth(X, Graph),
-    Node_y = lists:nth(Y, Graph),
-    % Tell each node that they are neighbors
-    Node_x ! {add, Node_y},
-    Node_y ! {add, Node_x},
-    addEdges(Graph, Es).
+% Spwan a anonymous process which sends a delayed message to the nodes and
+% simulate walking through the edge.
+walk(Walker, From, To, Weight) ->
+    spawn(
+        fun() ->
+            From ! {ant_choose, To},
+            timer:sleep(Weight * ?DELAY_FACTOR),
+            timer:sleep(Weight * ?DELAY_FACTOR),
+            To ! {ant_choose, From},
+            To ! {ask, Walker}
+        end
+    ).
 
-createGraph(0, Acc) -> Acc;
-createGraph(N, Acc) ->
-    createGraph(N - 1, [spawn(node, node, [[],0])|Acc]).
+% ----------------------------------------------------------- %
+%                     Pheromone modifiers                     %
+% ----------------------------------------------------------- %
 
+% Generalized function to update the pheromone factor for a given node in the
+% neighborhood with an anonymous function.
 updatePheromone(_, [], _, Acc) ->
     lists:reverse(Acc);
-updatePheromone(Node, [{Node, PF}|NBH], Fun, Acc) ->
-    lists:reverse([{Node, Fun(PF)}|Acc], NBH);
-updatePheromone(Node,  [{PID, PF}|NBH], Fun, Acc) ->
-    updatePheromone(Node, NBH, Fun, [{PID, PF}|Acc]).
+updatePheromone(Node, [{Node, Weight, PF}|NBH], Fun, Acc) ->
+    lists:reverse([{Node, Weight, Fun(PF)}|Acc], NBH);
+updatePheromone(Node, [{PID, Weight, PF}|NBH], Fun, Acc) ->
+    updatePheromone(Node, NBH, Fun, [{PID, Weight, PF}|Acc]).
 
+% Applies a increment in the pheromones of the path for a given node in the
+% neighborhood.
 strengthenPheromone(Node, NBH) ->
     updatePheromone(Node, NBH, fun(X) -> X + 1 end, []).
 
+% Applies a reduction in the pheromones of the path for a given node in the
+% neighborhood.
+weakenPheromone(Node, NBH) ->
+    updatePheromone(Node, NBH,
+        fun(X) ->
+            if X > 1 ->
+                X - 1;
+            true ->
+                X
+            end
+        end, []).
+
+% Spawns 
+evaporatePheromone(Node, NBR) ->
+    spawn(
+        fun() ->
+            timer:sleep(5000),
+            Node ! {evaporate, NBR}
+        end).
+
+% ----------------------------------------------------------- %
+%                        Node process                         %
+% ----------------------------------------------------------- %
+
 node(NBH, Traffic) ->
     receive
-        {add, NBR} ->
-            node([{NBR, 1}|NBH], Traffic);
-        {antPassBy, Node} ->
-            newNBH = strengthenPheromone(Node, NBH),
-            node(newNBH, Traffic + 1);
-        {get_nbh} ->
-            io:format("NBH: ~p~n", [NBH]),
+        {add, NBR, Weight} ->
+            node([{NBR, Weight, 1}|NBH], Traffic);
+        {ask, Ant} ->
+            Ant ! {goto, NBH},
+            node(NBH, Traffic + 1);
+        {ant_choose, Node} ->
+            NewNBH = strengthenPheromone(Node, NBH),
+            evaporatePheromone(self(), Node),
+            node(NewNBH, Traffic);
+        {evaporate, Node} ->
+            NewNBH = weakenPheromone(Node, NBH),
+            node(NewNBH, Traffic);
+        {print} ->
+            io:format("~p: { NBH: ~p, Traffic: ~p }~n", [self(), NBH, Traffic]),
             node(NBH, Traffic);
         _ -> node(NBH, Traffic)
     end.
