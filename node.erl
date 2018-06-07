@@ -2,7 +2,7 @@
 
 -export ([node/2, walk/4]).
 
--define (DELAY_FACTOR, 500).
+-define (DELAY_FACTOR, 100).
 
 % Spwan a anonymous process which sends a delayed message to the nodes and
 % simulate walking through the edge.
@@ -47,11 +47,11 @@ weakenPheromone(Node, NBH) ->
             end
         end, []).
 
-% Spawns 
+% Spawns a process which evaporate a pheromone in a given time.
 evaporatePheromone(Node, NBR) ->
     spawn(
         fun() ->
-            timer:sleep(5000),
+            timer:sleep(10000),
             Node ! {evaporate, NBR}
         end).
 
