@@ -10,11 +10,14 @@ exterminate(Ants) ->
 awakening(Ants) ->
     lists:map(fun(A) -> A ! {init} end, Ants).
 
-wakeUp(0, _, _, Ants) when is_list(Ants) -> Ants;
-wakeUp(N, From, Nodes, Ants) when is_integer(N), is_list(Ants), N > 0 ->
-    A = spawn(ant, ant, [From, [], Nodes]),
-    wakeUp(N-1, From, Nodes, [A|Ants]);
-wakeUp(_, _, _, _) -> throw("Cannot awake a non natural number of ants").
+wakeUp(0, _, _, _, Ants) when is_list(Ants) -> Ants;
+wakeUp(N, Source, Nodes, Target, Ants) when
+    is_integer(N),
+    is_integer(Nodes),
+    is_list(Ants), N > 0 ->
+        A = spawn(ant, ant, [Source, [], Nodes, Target]),
+        wakeUp(N-1, Source, Nodes, Target, [A|Ants]);
+wakeUp(_, _, _, _, _) -> throw("Cannot awake a non natural number of ants").
 
 master(N, NodeList) -> master(N, NodeList, []).
 master(N, NodeList, Ants) ->
@@ -22,16 +25,16 @@ master(N, NodeList, Ants) ->
         {init} ->
             awakening(Ants),
             master(N, NodeList, Ants);
-        {createAnts, N_ants, From} ->
+        {createAnts, N_ants, Source, Target} ->
             exterminate(Ants),
-            NewAnts = wakeUp(N_ants, From, N, []),
+            NewAnts = wakeUp(N_ants, Source, N, Target, []),
             master(N, NodeList, NewAnts);
         {killAnts} ->
             exterminate(Ants),
             master(N, NodeList, []);
         {printNodes} ->
             io:format("Graph: ", []),
-            lists:map(fun (N) -> N ! {print} end, NodeList),
+            lists:map(fun (Nd) -> Nd ! {print} end, NodeList),
             master(N, NodeList, Ants);
         {printAnts} ->
             io:format("Ants: ", []),
