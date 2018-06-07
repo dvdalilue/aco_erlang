@@ -9,7 +9,7 @@ them.
 # Useful shell history Erlang/OTP 20
 
 In order to active the obviously useful command history for `erl`, the following
-environment variable.
+environment variable enables this feature.
 
 ```console
 $ export ERL_AFLAGS="-kernel shell_history enabled"
