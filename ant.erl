@@ -58,17 +58,21 @@ ant(Node, Visited, Ns, Target) ->
             Edges = posibleEdges(NBH, Banned),
             if
                 Edges == [] ->
-                    self() ! {init},
                     if
                         length(Banned) == Ns ->
+                            {_, Weight} = chooseOneOf(
+                                posibleEdges(NBH, CurrentVisited)
+                            ),
+                            walk(self(), Node, Target, Weight),
                             % Go back with food
-                            ant(Target, [], Ns, lists:last(Visited));
+                            ant(Target, [], Ns, lists:last(CurrentVisited));
                         true ->
                             [Previous|_] = Visited,
                             Previous ! {evaporate, Node},
                             Node ! {evaporate, Previous},
+                            self() ! {init},
                             % Respawn back to source (ant died)
-                            ant(lists:last(Visited), [], Ns, Target)
+                            ant(lists:last(CurrentVisited), [], Ns, Target)
                     end;
                 true ->
                     {NewNode, Weight} = chooseOneOf(Edges),
