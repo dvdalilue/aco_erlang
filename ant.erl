@@ -56,29 +56,24 @@ ant(Node, Visited, Ns, Target) ->
             CurrentVisited = [Node|Visited],
             Banned = [Target|CurrentVisited],
             Edges = posibleEdges(NBH, Banned),
-            if
-                Edges == [] ->
-                    if
-                        length(Banned) == Ns ->
-                            {_, Weight} = chooseOneOf(
-                                posibleEdges(NBH, CurrentVisited)
-                            ),
-                            walk(self(), Node, Target, Weight),
-                            % Go back with food
-                            ant(Target, [], Ns, lists:last(CurrentVisited));
-                        true ->
-                            [Previous|_] = Visited,
-                            Previous ! {evaporate, Node},
-                            Node ! {evaporate, Previous},
-                            self() ! {init},
-                            % Respawn back to source (ant died)
-                            ant(lists:last(CurrentVisited), [], Ns, Target)
-                    end;
-                true ->
-                    {NewNode, Weight} = chooseOneOf(Edges),
-                    walk(self(), Node, NewNode, Weight),
-                    ant(NewNode, CurrentVisited, Ns, Target)
-            end;
+            if Edges == [] ->
+                if length(Banned) == Ns ->
+                    {_, W} = chooseOneOf(
+                        posibleEdges(NBH, CurrentVisited)),
+                    walk(self(), Node, Target, W),
+                    % Go back with food
+                    ant(Target, [], Ns, lists:last(CurrentVisited))
+                end,
+                [Previous|_] = Visited,
+                Previous ! {evaporate, Node},
+                Node ! {evaporate, Previous},
+                self() ! {init},
+                % Respawn back to source (ant died)
+                ant(lists:last(CurrentVisited), [], Ns, Target)
+            end,
+            {NewNode, Weight} = chooseOneOf(Edges),
+            walk(self(), Node, NewNode, Weight),
+            ant(NewNode, CurrentVisited, Ns, Target);
         {die} ->
             exit(kill);
         _ ->
